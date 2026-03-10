@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AR Action Trigger Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { margin: 0; background: #050505; color: #00f2ff; font-family: 'Orbitron', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+    .viewport { position: relative; border: 4px solid #1a1a1a; border-radius: 15px; box-shadow: 0 0 50px rgba(0, 242, 255, 0.1); }
+    video { transform: rotateY(180deg); width: 800px; height: 500px; border-radius: 12px; }
+    canvas { position: absolute; left: 0; top: 0; transform: rotateY(180deg); }
+
+    /* ACTION 1: HOLOGRAM POPUP (Victory) */
+    #hologram {
+      position: absolute; top: 20%; left: 50%; transform: translateX(-50%) scale(0);
+      background: rgba(0, 242, 255, 0.1); border: 2px solid #00f2ff; backdrop-filter: blur(10px);
+      padding: 20px; border-radius: 10px; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      text-align: center; pointer-events: none; opacity: 0;
+    }
+    #hologram.active { transform: translateX(-50%) scale(1.2); opacity: 1; box-shadow: 0 0 30px #00f2ff; }
+
+    /* ACTION 2: SYSTEM FLASH (Thumbs Up) */
+    #flash {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: white; opacity: 0; pointer-events: none; z-index: 100;
+    }
+    .flash-anim { animation: cameraFlash 0.5s ease-out; }
+    @keyframes cameraFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    .instructions { margin-bottom: 10px; color: #888; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <div class="instructions">ACTION 1: ✌️ FOR HOLOGRAM | ACTION 2: 👍 FOR SYSTEM CAPTURE</div>
+
+  <div class="viewport" id="viewport">
+    <div id="flash"></div>
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas" width="800" height="500"></canvas>
+    
+    <div id="hologram">
+      <div style="font-size: 0.7rem;">ENCRYPTED ACCESS</div>
+      <div style="font-size: 1.5rem; font-weight: bold; margin: 10px 0;">VERIFIED ✅</div>
+      <div style="font-size: 0.6rem; color: #fff;">USER_023: PERMISSION GRANTED</div>
+    </div>
+  </div>
+
+  <script type="module">
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const hologram = document.getElementById('hologram');
+    const flash = document.getElementById('flash');
+
+    let canFlash = true; // Prevent constant flashing
+
+    function onResults(results) {
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00f2ff', lineWidth: 3});
+          checkTriggers(landmarks);
+        }
+      } else {
+        hologram.classList.remove('active');
+      }
+    }
+
+    function checkTriggers(landmarks) {
+      const thumbTip = landmarks[4].y;
+      const indexTip = landmarks[8].y;
+      const middleTip = landmarks[12].y;
+      const ringTip = landmarks[16].y;
+      const indexPip = landmarks[6].y;
+
+      // ACTION 1: Victory -> Show Hologram
+      if (indexTip < indexPip && middleTip < indexPip && ringTip > indexPip) {
+        hologram.classList.add('active');
+      } else {
+        hologram.classList.remove('active');
+      }
+
+      // ACTION 2: Thumbs Up -> Trigger Flash
+      if (thumbTip < indexTip && indexTip > indexPip) {
+        if(canFlash) {
+          triggerCapture();
+        }
+      } else {
+        canFlash = true; // Reset when thumb goes down
+      }
+    }
+
+    function triggerCapture() {
+      canFlash = false;
+      flash.classList.add('flash-anim');
+      setTimeout(() => {
+        flash.classList.remove('flash-anim');
+      }, 500);
+      console.log("System Capture Triggered!");
+    }
+
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7});
+    hands.onResults(onResults);
+
+    navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
+      videoElement.srcObject = stream;
+      videoElement.addEventListener('loadedmetadata', () => {
+        async function loop() { await hands.send({image: videoElement}); requestAnimationFrame(loop); }
+        loop();
+      });
+    });
+  </script>
+</body>
+</html>
